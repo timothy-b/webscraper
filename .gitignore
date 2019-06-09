@@ -1,0 +1,65 @@
+# Allow these files
+packages/*
+!packages/NuGet.CommandLine*/
+!packages/NuGet.CommandLine*/*
+*/packages/*
+
+# ignore various input/output files
+input.*
+output.*
+*.log
+*.resources
+
+
+# ignore output folders
+bin/
+build/
+obj/
+ipch/
+GeneratedCode/
+Setup/
+bundles/
+release/
+debug/
+logs/
+node_modules/
+
+# ignore user-specific options/cache files
+.vs/
+.idea/
+_ReSharper.*
+StyleCop.Cache
+Thumbs.db
+*.csproj.user
+*.opensdf
+*.[Rr]e[Ss]harper.user
+*.DotSettings.user
+*.sdf
+*.sln.cache
+*.suo
+*.vcxproj.user
+*.mode1v3
+!default.mode1v3
+*.pbxuser
+!default.pbxuser
+*.perspectivev3
+*.pidb
+*.userprefs
+*.tmp
+*.dbmdl
+tail_*.js
+*.ldf
+*.mdf
+npm-debug.log
+
+# Ignore generated script and css files
+*.squish.css
+*.squish.js
+*.debug.css
+
+# Ignore backup files made by Marketing DotLess tool
+._.DS_Store
+.DS_Store
+.*.less
+
+*.dll.xml
