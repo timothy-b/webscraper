@@ -1,9 +1,10 @@
 const fs = require('fs');
+const path = require('path');
 const { StaticPool } = require('node-worker-threads-pool');
 
-const filePath = 'C:/personal-code/webscraper/slave.js';
+const filePath = path.join(process.cwd(), 'slave.js');
 
-const numWorkers = 4;
+const numWorkers = 8;
 
 const pool = new StaticPool({
 	size: numWorkers,
@@ -14,11 +15,11 @@ const pool = new StaticPool({
 async function main() {
 	await fs.readFile('input.txt', { encoding: 'utf8', flag: 'r' }, async (err, data) => {
 		if (err) throw err;
-		await startSlaves(data);
+		await runSlaves(data);
 	});
 };
 
-async function startSlaves(data) {
+async function runSlaves(data) {
 	const datas = data.split('\r\n');
 	const dataChunks = enumerateInterleavedChunks(datas, numWorkers);
 

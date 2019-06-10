@@ -3,7 +3,6 @@ const bunyan = require('bunyan');
 const fs = require('fs');
 const marky = require('marky');
 const puppeteer = require('puppeteer');
-const url = require('url');
 
 let log;
 
@@ -15,7 +14,7 @@ async function main() {
 };
 //main();
 
-async function scrapeSites(sites, logIdentifier) {
+async function scrapeSites(sites, logIdentifier, outputProgress = async () => {}) {
 	const results = [];
 	log = configureLogger(logIdentifier)
 
@@ -48,12 +47,6 @@ async function scrapeSites(sites, logIdentifier) {
 	await browser.close();
 
 	return results;
-}
-
-async function outputProgress({ site, targetFound }) {
-	await fs.appendFile('output.csv', `${site},${targetFound}\r\n`, 'utf8', (err) => {
-		if (err) throw err;
-	});
 }
 
 function configureLogger(name) {
@@ -104,7 +97,7 @@ async function scrapeSite(page, url) {
 	log.info(`scraping ${url}`);
 
 	const visitedUrls = {};
-	const siteHasTargetLink = (await visitHelper(page, [{ href: url }], visitedUrls, url, true));
+	const siteHasTargetLink = (await visitHelper(page, url, [{ href: url }], visitedUrls, true));
 
 	log.info(`Has target link: ${siteHasTargetLink}`);
 	log.info(`${Object.keys(visitedUrls).length} visited links`);
@@ -116,24 +109,32 @@ async function scrapeSite(page, url) {
 	};
 }
 
-async function visitHelper(page, links, visitedUrls, landingPage, isLandingPage = false) {
-	const rankedLinks = rankLinks(filterLinks(landingPage, links)).filter(l => l.rank > 0 || isLandingPage);
+const maxLevels = 10;
+
+async function visitHelper(page, landingPage, links, visitedUrls, isLandingPage = false, level = 0) {
+	const rankedLinks = rankLinks(filterLinks(links, landingPage)).filter(l => l.rank > 0 || isLandingPage);
 
 	for (const link of rankedLinks) {
+		// guard against links which cause infinite loops
+		if (level++ == maxLevels)
+			break;
+
+		const url = new URL(link.href);
+		const hostAndPath = `${url.hostname}${url.pathname}`;
 
 		// base case
-		if (visitedUrls[link.href])
+		if (visitedUrls[hostAndPath])
 			continue;
 
 		// recursive case
-		visitedUrls[link.href] = true;
-		if (await visit(page, link.href, visitedUrls))
+		visitedUrls[hostAndPath] = true;
+		if (await visit(page, landingPage, link.href, visitedUrls, level))
 			return true;
 	}
 	return false;
 }
 
-async function visit(page, url, visitedUrls) {
+async function visit(page, landingPage, url, visitedUrls, level) {
 	log.info(`visiting ${url}`);
 
 	try {
@@ -144,7 +145,7 @@ async function visit(page, url, visitedUrls) {
 
 		const links = await page.evaluate(getLinks);
 
-		return await visitHelper(page, links, visitedUrls);
+		return await visitHelper(page, landingPage, links, visitedUrls, false, level);
 	} catch (e) {
 		if (e.message.includes('net::')) {
 			if (e.message.includes('net::ERR_NAME_NOT_RESOLVED'))
@@ -174,22 +175,24 @@ function getLinks() {
 const filterKeywords = [ 'download', 'upload', 'media' ];
 const skippedLinks = {};
 
-function filterLinks(landingPage, links) {
-	const landingPageUrl = new URL(landingPage);
+function filterLinks(links, landingPage) {
+	const landingPageUrl = normalizeHostname(new URL(landingPage).hostname);
 	const filteredLinks = [];
 	for (const link of links) {
-		if (new URL(link).hostname != landingPageUrl.hostname) {
-			filteredLinks.push(link);
+		if (normalizeHostname(new URL(link.href).hostname) != landingPageUrl) {
+			skippedLinks[link] = true;
 			continue;
 		}
 
-		if (!link.pathname && !link.search) {
+		const trimmedText = link.text.trim();
+
+		if (!link.pathname && !link.search && trimmedText.length == 0) {
 			filteredLinks.push(link);
 			continue;
 		}
 
 		const pathAndQuery = `${link.pathname}${link.search}`;
-		if (filterKeywords.every(k => !pathAndQuery.includes(k)))
+		if (filterKeywords.some(k => pathAndQuery.includes(k) || trimmedText.includes(k)))
 			filteredLinks.push(link)
 		else
 			skippedLinks[link] = true;
@@ -198,11 +201,28 @@ function filterLinks(landingPage, links) {
 	return filteredLinks;
 }
 
+function normalizeHostname(hostname) {
+	let numPeriods = 0;
+	let indexOfFirstPeriod = 0;
+	for (const c in hostname) {
+		if (hostname[c] === '.') {
+			if (++numPeriods == 1)
+				indexOfFirstPeriod = c;
+			else if (numPeriods == 2)
+				break;
+		}		
+	}
+	if (numPeriods > 1)
+		return hostname.slice(indexOfFirstPeriod + 1);
+	return hostname;
+}
+
 function rankLinks(links) {
 	const linksWithRanking = links.map(l => ({
 		href: l.href,
 		pathname: l.pathname,
 		search: l.search,
+		text: l.text,
 		rank: fastRankLink(l)
 	}));
 
@@ -215,6 +235,7 @@ function rankLinks(links) {
 function fastRankLink(link) {
 	for (const keyword of givingKeywords) {
 		if ((link.pathname && link.pathname.includes(keyword))
+			|| (link.text && link.text.includes(keyword))
 			|| (link.search && link.search.includes(keyword)))
 			return rankByGivingKeyword[keyword];
 	}
