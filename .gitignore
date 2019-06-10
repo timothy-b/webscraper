@@ -5,9 +5,10 @@ packages/*
 */packages/*
 
 # ignore various input/output files
-input.*
-output.*
+input*
+output*
 *.log
+*.csv
 *.resources
 
 
