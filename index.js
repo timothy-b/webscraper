@@ -1,11 +1,12 @@
 'use strict';
-const bunyan = require('bunyan');
+const configureLogger = require('./configureLogger.js');
 const fs = require('fs');
 const marky = require('marky');
 const puppeteer = require('puppeteer');
 
 let log;
 
+// TODO: run if this file was not imported
 async function main() {
 	await fs.readFile('input.txt', { encoding: 'utf8', flag: 'r' }, async (err, data) => {
 		if (err) throw err;
@@ -22,24 +23,23 @@ async function scrapeSites(sites, logIdentifier, outputProgress = async () => {}
 
 	const startTime = Math.round(new Date().getTime() / 1000);
 
-	let i = 0;
+	let siteNum = 0;
 	for (const site of sites) {
 		marky.mark(`scraping site ${site}`);
 
 		const result = await scrapeSite(page, site);
 		await outputProgress(result);
 		results.push(result);
-
-		i++;
+		siteNum++;
 
 		const mark = marky.stop(`scraping site ${site}`);
 		const currentTime = Math.round(new Date().getTime() / 1000);
 		const elapsedTime = currentTime - startTime;
-		const estimatedTimeRemaining = Math.round(elapsedTime / (i / sites.length));
+		const estimatedTimeRemaining = Math.round(elapsedTime / (siteNum / sites.length));
 		const estimatedCompletionDate = new Date(new Date().getTime() + (estimatedTimeRemaining * 1000));
 
 		log.info(`${(mark.duration / 1000).toFixed(2)} seconds`);
-		log.info(`${i}/${sites.length} - ${((i / sites.length) * 100).toFixed(2)}% complete`);
+		log.info(`${siteNum}/${sites.length} - ${((siteNum / sites.length) * 100).toFixed(2)}% complete`);
 		log.info(`estimated time remaining: ${estimatedTimeRemaining} seconds; estimated completion date ${estimatedCompletionDate}`);
 	}
 
@@ -47,29 +47,6 @@ async function scrapeSites(sites, logIdentifier, outputProgress = async () => {}
 	await browser.close();
 
 	return results;
-}
-
-function configureLogger(name) {
-	const log = bunyan.createLogger({name: name,
-		streams: [
-		{
-			level: 'info',
-			stream: process.stdout
-		},
-		{
-			level: 'info',
-			path: 'log.log'
-		}
-	]});
-
-	log._emit = (rec, noemit) => {
-		delete rec.hostname;
-		delete rec.pid;
-		delete rec.v;
-		bunyan.prototype._emit.call(log, rec, noemit);
-	};
-
-	return log;
 }
 
 async function setupPage(){
@@ -184,7 +161,7 @@ function filterLinks(links, landingPage) {
 			continue;
 		}
 
-		const trimmedText = link.text.trim();
+		const trimmedText = link.text ? link.text.trim() : '';
 
 		if (!link.pathname && !link.search && trimmedText.length == 0) {
 			filteredLinks.push(link);
